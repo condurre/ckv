@@ -4,6 +4,15 @@
 storage API and TCP transport are independent: a future transport can call the
 same `kv_store` API without depending on the TCP implementation.
 
+## Security warning
+
+`ckv` is an educational example and is **not a secure production datastore**.
+It provides no authentication, authorization, encryption, or protection
+against denial-of-service attacks. Do not expose it to the public internet or
+use it to store sensitive data. If you run it, keep it on a trusted private
+network or bind it behind an appropriately configured firewall and secure
+proxy.
+
 ## Build
 
 ```sh
