@@ -6,9 +6,9 @@ LDLIBS ?= -pthread
 
 TARGET = ckv
 TEST_TARGET = test_kv_store
-COMMON_OBJECTS = src/kv_store.o src/tcp_server.o
+COMMON_OBJECTS = src/kv_store.o src/tcp_server.o src/udp_server.o
 
-.PHONY: all clean test test-concurrent
+.PHONY: all clean test test-concurrent test-udp
 
 all: $(TARGET)
 
@@ -21,9 +21,13 @@ $(TEST_TARGET): tests/test_kv_store.o src/kv_store.o
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 	$(MAKE) test-concurrent
+	$(MAKE) test-udp
 
 test-concurrent: $(TARGET)
 	python3 tests/test_concurrent_tcp.py
+
+test-udp: $(TARGET)
+	python3 tests/test_udp.py
 
 clean:
 	rm -f $(TARGET) $(TEST_TARGET) src/*.o tests/*.o
