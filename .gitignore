@@ -8,6 +8,8 @@
 *.elf
 
 # Linker output
+ckv
+test_kv_store
 *.ilk
 *.map
 *.exp
