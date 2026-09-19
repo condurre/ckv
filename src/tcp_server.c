@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -96,6 +97,22 @@ static int serve_client(int client_fd, tcp_request_handler handler, void *contex
     }
 }
 
+struct client_context {
+    int client_fd;
+    tcp_request_handler handler;
+    void *handler_context;
+};
+
+static void *serve_client_thread(void *argument)
+{
+    struct client_context *client = argument;
+
+    serve_client(client->client_fd, client->handler, client->handler_context);
+    close(client->client_fd);
+    free(client);
+    return NULL;
+}
+
 int tcp_server_run(uint16_t port, tcp_request_handler handler, void *context)
 {
     struct sigaction action;
@@ -164,8 +181,37 @@ int tcp_server_run(uint16_t port, tcp_request_handler handler, void *context)
             return TCP_SERVER_ACCEPT_ERROR;
         }
 
-        serve_client(client_fd, handler, context);
-        close(client_fd);
+        struct client_context *client = malloc(sizeof(*client));
+        pthread_t thread;
+        int thread_result;
+        int detach_result;
+
+        if (client == NULL) {
+            fprintf(stderr, "failed to allocate client context\n");
+            close(client_fd);
+            continue;
+        }
+
+        client->client_fd = client_fd;
+        client->handler = handler;
+        client->handler_context = context;
+        thread_result = pthread_create(&thread, NULL, serve_client_thread, client);
+        if (thread_result != 0) {
+            fprintf(stderr, "failed to create client thread: %s\n",
+                    strerror(thread_result));
+            free(client);
+            close(client_fd);
+            continue;
+        }
+
+        detach_result = pthread_detach(thread);
+        if (detach_result != 0) {
+            fprintf(stderr, "failed to detach client thread: %s\n",
+                    strerror(detach_result));
+            if (pthread_join(thread, NULL) != 0) {
+                fprintf(stderr, "failed to join client thread after detach failure\n");
+            }
+        }
     }
 
     close(server_fd);

@@ -30,4 +30,6 @@ QUIT           -> BYE
 ```
 
 The TCP server handles sockets, framing, and I/O only. Request interpretation
-is supplied through a callback, while `kv_store` owns key-value storage.
+is supplied through a callback, while `kv_store` owns key-value storage. Each
+accepted client is handled by a detached worker thread, so slow or idle
+connections do not block other clients.
