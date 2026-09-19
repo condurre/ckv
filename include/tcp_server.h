@@ -2,6 +2,7 @@
 #define TCP_SERVER_H
 
 #include <stdint.h>
+#include <signal.h>
 
 typedef int (*tcp_request_handler)(const char *request, char **response, void *context);
 
@@ -17,5 +18,7 @@ enum tcp_server_result {
 };
 
 int tcp_server_run(uint16_t port, tcp_request_handler handler, void *context);
+int tcp_server_run_until_stopped(uint16_t port, tcp_request_handler handler,
+                                 void *context, volatile sig_atomic_t *running);
 
 #endif

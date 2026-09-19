@@ -10,18 +10,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/select.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #define TCP_REQUEST_SIZE 4096
 #define TCP_BACKLOG 16
-
-static volatile sig_atomic_t server_running = 1;
-
-static void stop_server(int signal_number)
-{
-    (void)signal_number;
-    server_running = 0;
-}
 
 static int send_all(int client_fd, const char *data, size_t length)
 {
@@ -113,31 +107,26 @@ static void *serve_client_thread(void *argument)
     return NULL;
 }
 
-int tcp_server_run(uint16_t port, tcp_request_handler handler, void *context)
+static volatile sig_atomic_t *default_running;
+
+static void stop_default_server(int signal_number)
 {
-    struct sigaction action;
+    (void)signal_number;
+    *default_running = 0;
+}
+
+int tcp_server_run_until_stopped(uint16_t port, tcp_request_handler handler,
+                                 void *context, volatile sig_atomic_t *running)
+{
     struct sockaddr_in address;
     int server_fd;
     int option = 1;
     int option_result;
-    int signal_result;
     int bind_result;
     int listen_result;
 
-    if (handler == NULL) {
+    if (handler == NULL || running == NULL) {
         return TCP_SERVER_INVALID_ARGUMENT;
-    }
-
-    memset(&action, 0, sizeof(action));
-    action.sa_handler = stop_server;
-    sigemptyset(&action.sa_mask);
-    signal_result = sigaction(SIGINT, &action, NULL);
-    if (signal_result < 0) {
-        return TCP_SERVER_SIGNAL_ERROR;
-    }
-    signal_result = sigaction(SIGTERM, &action, NULL);
-    if (signal_result < 0) {
-        return TCP_SERVER_SIGNAL_ERROR;
     }
 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -167,11 +156,29 @@ int tcp_server_run(uint16_t port, tcp_request_handler handler, void *context)
         return TCP_SERVER_LISTEN_ERROR;
     }
 
-    while (server_running) {
+    while (*running) {
+        fd_set readable;
+        struct timeval timeout = {0, 100000};
+        int ready;
+
+        FD_ZERO(&readable);
+        FD_SET(server_fd, &readable);
+        ready = select(server_fd + 1, &readable, NULL, NULL, &timeout);
+        if (ready == 0) {
+            continue;
+        }
+        if (ready < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            close(server_fd);
+            return TCP_SERVER_ACCEPT_ERROR;
+        }
+
         int client_fd = accept(server_fd, NULL, NULL);
 
         if (client_fd < 0) {
-            if (errno == EINTR && !server_running) {
+            if (errno == EINTR && !*running) {
                 break;
             }
             if (errno == EINTR) {
@@ -216,4 +223,20 @@ int tcp_server_run(uint16_t port, tcp_request_handler handler, void *context)
 
     close(server_fd);
     return TCP_SERVER_OK;
+}
+
+int tcp_server_run(uint16_t port, tcp_request_handler handler, void *context)
+{
+    static volatile sig_atomic_t running = 1;
+    struct sigaction action;
+
+    memset(&action, 0, sizeof(action));
+    default_running = &running;
+    action.sa_handler = stop_default_server;
+    sigemptyset(&action.sa_mask);
+    if (sigaction(SIGINT, &action, NULL) < 0 ||
+        sigaction(SIGTERM, &action, NULL) < 0) {
+        return TCP_SERVER_SIGNAL_ERROR;
+    }
+    return tcp_server_run_until_stopped(port, handler, context, &running);
 }

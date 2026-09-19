@@ -1,11 +1,49 @@
 #include "kv_store.h"
 #include "tcp_server.h"
+#include "udp_server.h"
 
+#include <errno.h>
+#include <signal.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define STORE_BUCKETS 1024
+
+struct server_thread_context {
+    unsigned short port;
+    kv_store *store;
+    volatile sig_atomic_t *running;
+    int result;
+    int is_udp;
+};
+
+volatile sig_atomic_t servers_running = 1;
+static int handle_request(const char *request, char **response, void *context);
+
+static void stop_servers(int signal_number)
+{
+    (void)signal_number;
+    servers_running = 0;
+}
+
+static void *run_server(void *argument)
+{
+    struct server_thread_context *server = argument;
+
+    if (server->is_udp) {
+        server->result = udp_server_run(server->port, handle_request,
+                                        server->store, server->running);
+    } else {
+        server->result = tcp_server_run_until_stopped(
+            server->port, handle_request, server->store, server->running);
+    }
+    if (server->result != 0) {
+        *server->running = 0;
+    }
+    return NULL;
+}
 
 static char *response_for(const char *text)
 {
@@ -78,6 +116,11 @@ int main(int argc, char **argv)
     kv_store *store;
     unsigned long port = 6379;
     char *end = NULL;
+    struct sigaction action;
+    struct server_thread_context tcp_context;
+    struct server_thread_context udp_context;
+    pthread_t tcp_thread;
+    pthread_t udp_thread;
     int server_result;
 
     if (argc > 1) {
@@ -94,8 +137,42 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    printf("ckv listening on port %lu\n", port);
-    server_result = tcp_server_run((unsigned short)port, handle_request, store);
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = stop_servers;
+    sigemptyset(&action.sa_mask);
+    if (sigaction(SIGINT, &action, NULL) < 0 ||
+        sigaction(SIGTERM, &action, NULL) < 0) {
+        fprintf(stderr, "failed to install signal handlers: %s\n",
+                strerror(errno));
+        kv_store_destroy(store);
+        return EXIT_FAILURE;
+    }
+
+    tcp_context = (struct server_thread_context){
+        (unsigned short)port, store, &servers_running, 0, 0
+    };
+    udp_context = (struct server_thread_context){
+        (unsigned short)port, store, &servers_running, 0, 1
+    };
+    printf("ckv listening on TCP and UDP port %lu\n", port);
+    if (pthread_create(&tcp_thread, NULL, run_server, &tcp_context) != 0) {
+        fprintf(stderr, "failed to start server threads\n");
+        servers_running = 0;
+        kv_store_destroy(store);
+        return EXIT_FAILURE;
+    }
+    if (pthread_create(&udp_thread, NULL, run_server, &udp_context) != 0) {
+        fprintf(stderr, "failed to start server threads\n");
+        servers_running = 0;
+        pthread_join(tcp_thread, NULL);
+        kv_store_destroy(store);
+        return EXIT_FAILURE;
+    }
+    pthread_join(tcp_thread, NULL);
+    servers_running = 0;
+    pthread_join(udp_thread, NULL);
+    server_result = tcp_context.result != 0 ? tcp_context.result :
+                    udp_context.result;
     kv_store_destroy(store);
 
     if (server_result != TCP_SERVER_OK) {
