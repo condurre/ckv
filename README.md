@@ -28,24 +28,29 @@ UDP, using port `6379` by default:
 ./ckv [port]
 ```
 
-## Protocol
+## Protocol and clients
 
-Requests are newline-delimited. Each client connection may send multiple
-requests and receives one newline-delimited response for each request.
+The complete wire specification, limits, errors, transport behavior, and UDP
+reliability caveats are in [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 
-```text
-SET key value  -> OK
-GET key        -> the value, or NOT_FOUND
-DEL key        -> OK, or NOT_FOUND
-QUIT           -> BYE
+Start the server, then run either concise client example:
+
+```sh
+./ckv 6379
+python3 examples/tcp_client.py 6379
+python3 examples/udp_client.py 6379
 ```
 
-TCP uses newline-delimited streams. UDP treats each datagram as exactly one
-request and sends exactly one response datagram; a trailing newline is
-optional. Oversized UDP datagrams receive `ERR request too long`.
+Both clients print:
 
-The transport modules handle sockets, framing, and I/O only. Request
-interpretation is supplied through a callback, while `kv_store` owns key-value
-storage. TCP accepted clients are handled by detached worker threads, so slow
-or idle connections do not block other clients. UDP and TCP share the same
-store, so mutations are visible across both protocols.
+```text
+SET example hello world -> OK
+GET example -> hello world
+DEL example -> OK
+QUIT -> BYE
+```
+
+TCP accepts multiple newline-framed requests per connection. UDP uses one
+datagram per request and response. Both transports use the same store and
+port. The server binds all interfaces by default; see the security warning
+above before running it outside a trusted private network.
