@@ -6,17 +6,27 @@ LDLIBS ?= -pthread
 
 TARGET = ckv
 TEST_TARGET = test_kv_store
+TCP_CLIENT = examples/tcp_client
+UDP_CLIENT = examples/udp_client
 COMMON_OBJECTS = src/kv_store.o src/tcp_server.o src/udp_server.o
 
-.PHONY: all clean test test-concurrent test-udp
+.PHONY: all clean test test-concurrent test-udp examples
 
 all: $(TARGET)
+
+examples: $(TCP_CLIENT) $(UDP_CLIENT)
 
 $(TARGET): src/main.o $(COMMON_OBJECTS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 $(TEST_TARGET): tests/test_kv_store.o src/kv_store.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+$(TCP_CLIENT): examples/tcp_client.o
+	$(CC) $(LDFLAGS) -o $@ $^
+
+$(UDP_CLIENT): examples/udp_client.o
+	$(CC) $(LDFLAGS) -o $@ $^
 
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
@@ -30,4 +40,4 @@ test-udp: $(TARGET)
 	python3 tests/test_udp.py
 
 clean:
-	rm -f $(TARGET) $(TEST_TARGET) src/*.o tests/*.o
+	rm -f $(TARGET) $(TEST_TARGET) $(TCP_CLIENT) $(UDP_CLIENT) src/*.o tests/*.o examples/*.o

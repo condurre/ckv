@@ -77,5 +77,10 @@ Keep it on a trusted private network or place it behind an appropriately
 configured firewall and secure proxy. UDP's reliability limitations do not
 make it safer than TCP.
 
-Runnable examples are in [`examples/tcp_client.py`](../examples/tcp_client.py)
-and [`examples/udp_client.py`](../examples/udp_client.py).
+Runnable examples are in [`examples/tcp_client.py`](../examples/tcp_client.py),
+[`examples/udp_client.py`](../examples/udp_client.py),
+[`examples/tcp_client.c`](../examples/tcp_client.c), and
+[`examples/udp_client.c`](../examples/udp_client.c). Build the C clients with
+`make examples`, then run them as `./examples/tcp_client [port]` or
+`./examples/tcp_client [host] [port]` (and likewise for UDP). They use
+portable POSIX IPv4 sockets; the default endpoint is `127.0.0.1:6379`.

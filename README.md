@@ -33,12 +33,15 @@ UDP, using port `6379` by default:
 The complete wire specification, limits, errors, transport behavior, and UDP
 reliability caveats are in [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 
-Start the server, then run either concise client example:
+Start the server, then build and run either the Python or C client example:
 
 ```sh
 ./ckv 6379
 python3 examples/tcp_client.py 6379
 python3 examples/udp_client.py 6379
+make examples
+./examples/tcp_client 6379
+./examples/udp_client 127.0.0.1 6379
 ```
 
 Both clients print:
@@ -52,5 +55,8 @@ QUIT -> BYE
 
 TCP accepts multiple newline-framed requests per connection. UDP uses one
 datagram per request and response. Both transports use the same store and
-port. The server binds all interfaces by default; see the security warning
-above before running it outside a trusted private network.
+port, so a `SET` issued by one client is visible to a client using the other
+transport. The C clients use POSIX IPv4 sockets and accept `[port]` or
+`[host] [port]`; the default is `127.0.0.1:6379`. The server binds all
+interfaces by default; see the security warning above before running it
+outside a trusted private network.
